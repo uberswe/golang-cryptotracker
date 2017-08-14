@@ -1,0 +1,61 @@
+{
+  "currencies": [
+    {
+      "BTC": [
+        {
+          "Amount": 1.03115444,
+          "AtValue": 50.00,
+          "WithCurrency": "EUR"
+        }
+      ],
+      "XRP": [
+        {
+          "Amount": 23000.00,
+          "AtValue": 0.02,
+          "WithCurrency": "EUR"
+        }
+      ],
+      "STEEM": [
+        {
+          "Amount": 708.366,
+          "AtValue": 0.039,
+          "WithCurrency": "EUR"
+        }
+      ],
+      "LTC": [
+        {
+          "Amount": 3.00,
+          "AtValue": 3.90,
+          "WithCurrency": "EUR"
+        }
+      ],
+      "IOT": [
+        {
+          "Amount": 1700.00,
+          "AtValue": 0.05,
+          "WithCurrency": "EUR"
+        }
+      ],
+      "SC": [
+        {
+          "Amount": 32978.72340426,
+          "AtValue": 0.00001,
+          "WithCurrency": "EUR"
+        }
+      ],
+      "DOT": [
+        {
+          "Amount": 8175.47458021,
+          "AtValue": 0.0000012,
+          "WithCurrency": "EUR"
+        }
+      ]
+    }
+  ],
+  "settings": {
+    "UpdateInterval": 60,
+    "UpdateTimeout": 60,
+    "ApiUrl": "https://min-api.cryptocompare.com/data/",
+    "CoinListUrl": "https://www.cryptocompare.com/api/data/coinlist/"
+  }
+}
