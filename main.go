@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os"
 	"runtime"
+	"github.com/fatih/color"
 )
 
 type CurrencyResult struct {
@@ -50,7 +51,12 @@ type ConfigCurrency map[string][]ConfigCurrencyDetails
 type ConfigCurrencyDetails struct {
 	Amount float64 `json:"Amount"`
 	AtValue float64 `json:"AtValue"`
-	WithCurrency string `json:"WithCurrency"`
+}
+
+type CurrencyObj struct {
+	Valid bool
+	Currency string
+	Positions []ConfigCurrencyDetails
 }
 
 type ConfigSettings struct {
@@ -58,13 +64,20 @@ type ConfigSettings struct {
 	UpdateTimeout int `json:"UpdateTimeout"`
 	ApiUrl string `json:"ApiUrl"`
 	CoinListUrl string `json:"CoinListUrl"`
+	BaseCurrency string `json:"BaseCurrency"`
+	Color bool `json:"Color"`
+	ShowConversion bool `json:"ShowConversion"`
 }
 
 type Result map[string]float64
 
-var checks map[string]ConfigCurrencyDetails
+var checks []CurrencyObj
 var updateInterval int
+var updateTimeout int
+var baseCurrency string
 var donateString = "Donate some ETH if you find this useful: 0xB9Df510bE5Aaad76E558cc7BF41E6363f3944dfc"
+var colorOn bool
+var showConversion bool
 
 var clear map[string]func() //create a map for storing clear funcs
 
@@ -99,8 +112,6 @@ func CallClear() {
 func main() {
 
 	updateInterval = 10
-	checks = make(map[string]ConfigCurrencyDetails)
-	currencies := make(map[string]bool)
 
 	fmt.Println("Cryptotracker started")
 	fmt.Println(donateString)
@@ -115,13 +126,20 @@ func main() {
 		log.Fatal(jsonErr)
 	}
 
+	updateInterval = c.Settings.UpdateInterval
+	baseCurrency = c.Settings.BaseCurrency
+	updateTimeout = c.Settings.UpdateTimeout
+	colorOn = c.Settings.Color
+	showConversion = c.Settings.ShowConversion
+
 	for _, el := range c.Currencies {
 		for coin, detailArray := range el {
+			curr := CurrencyObj{false, coin, []ConfigCurrencyDetails{}}
 			for _, detail := range detailArray {
-				fmt.Println("Own " + FloatToString(detail.Amount) + " " + coin + " at " + FloatToString(detail.AtValue) + " " + detail.WithCurrency)
-				currencies[coin] = false
-				checks[coin] = detail
+				fmt.Println("Own " + FloatToString(detail.Amount) + " " + coin + " at " + FloatToString(detail.AtValue) + " " + baseCurrency)
+				curr.Positions = append(curr.Positions, detail)
 			}
+			checks = append(checks, curr)
 		}
 	}
 
@@ -162,71 +180,104 @@ func main() {
 	}
 
 	for index, _ := range result.Data {
-		for i, _ := range currencies {
-			if i == index {
-				currencies[i] = true
+		for _, obj := range checks {
+			if obj.Currency == index {
+				obj.Valid = true
 			}
 		}
 	}
 
-	for i, am := range currencies {
-		if !am {
-			fmt.Println("WARNING: " + i + " could not be found on coin list")
+	for _, am := range checks {
+		if !am.Valid {
+			fmt.Println("WARNING: " + am.Currency + " could not be found on coin list")
 		}
 	}
 
 	fmt.Println("Done")
 	fmt.Println("Preparing to make first check... please wait")
+	CallClear();
 
+	getPrice(time.Now())
 	doEvery(time.Second*time.Duration(updateInterval), getPrice)
-	updateInterval = c.Settings.UpdateInterval
 }
 
 func getPrice(t time.Time) {
-	CallClear();
 	fmt.Printf("\033[0;0H")
 	fmt.Printf("\r" + donateString + "\n")
+	fmt.Println("Last updated: " + t.Format(time.RFC3339))
 	endCur := ""
 	totalval := 0.00
 	totalbought := 0.00
-	for coin, detail := range checks {
-		From := coin
-		To := detail.WithCurrency
-		url := "https://min-api.cryptocompare.com/data/price?fsym=" + From + "&tsyms=" + To;
-		w := http.Client{
-			Timeout: time.Second * 30,
-		}
+	for _, detail := range checks {
 
-		req, _ := http.NewRequest(http.MethodGet, url, nil)
+		LastTo := ""
+		LastFrom := ""
+		LastP := 0.00
 
-		res, getErr := w.Do(req)
-		if getErr != nil {
-			log.Println(getErr)
-		} else {
+		for _, cur := range detail.Positions {
 
-			body, readErr := ioutil.ReadAll(res.Body)
-			if readErr != nil {
-				log.Println(readErr)
+			From := detail.Currency
+			To := baseCurrency
+			url := "https://min-api.cryptocompare.com/data/price?fsym=" + From + "&tsyms=" + To;
+			w := http.Client{
+				Timeout: time.Second * time.Duration(updateTimeout),
+			}
+
+			req, _ := http.NewRequest(http.MethodGet, url, nil)
+
+			res, getErr := w.Do(req)
+			if getErr != nil {
+				log.Println(getErr)
 			} else {
 
-				r := Result{}
-				jsonErr := json.Unmarshal(body, &r)
-				if jsonErr != nil {
-					log.Println(jsonErr)
+				body, readErr := ioutil.ReadAll(res.Body)
+				if readErr != nil {
+					log.Println(readErr)
 				} else {
 
-					for _, p := range r {
-						fmt.Println(t.Format(time.RFC3339) + ": " + FloatToString(detail.Amount) + " "+From+" = "+FloatToString(p*detail.Amount)+" "+To+" " + FloatToString(Change(detail.AtValue, p)) + "%")
-						endCur = To
-						totalval = totalval + p*detail.Amount
-						totalbought = totalbought + detail.Amount*detail.AtValue
+					r := Result{}
+					jsonErr := json.Unmarshal(body, &r)
+					if jsonErr != nil {
+						log.Println(jsonErr)
+					} else {
+
+						for _, p := range r {
+							resString :=  FloatToString(cur.Amount) + " 	" + From + " 	= 	" + FloatToString(p*cur.Amount) + " 	" + To + "	 " + FloatToString(Change(cur.AtValue, p)) + "%"
+							if colorOn {
+								if Change(cur.AtValue, p) > 0.00 {
+									c := color.New(color.FgGreen)
+									c.Println(resString)
+								} else {
+									c := color.New(color.FgRed)
+									c.Println(resString)
+								}
+							} else {
+								fmt.Println(resString)
+							}
+							endCur = To
+							totalval = totalval + p*cur.Amount
+							totalbought = totalbought + cur.Amount*cur.AtValue
+							LastTo = To
+							LastFrom = From
+							LastP = p
+						}
 					}
 				}
 			}
 		}
+		if showConversion {
+			conversionString := "1 		" + LastFrom + " 	= 	" + FloatToString(LastP) + " 	" + LastTo
+			if colorOn {
+				c := color.New(color.FgBlue).Add(color.Bold)
+				c.Println(conversionString)
+			} else {
+				fmt.Println(conversionString)
+			}
+		}
 	}
 	fmt.Println("Total purchased: " + FloatToString(totalbought) + " " + endCur)
-	fmt.Println("Total value: " + FloatToString(totalval) + " " + endCur + " Change: " + FloatToString(Change(totalbought, totalval)) + "%")
+	fmt.Println("Total value: " + FloatToString(totalval) + " " + endCur)
+	fmt.Println("Change: " + FloatToString(Change(totalbought, totalval)) + "%")
 }
 
 func doEvery(d time.Duration, f func(time.Time)) {
